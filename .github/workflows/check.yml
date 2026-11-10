@@ -2,7 +2,7 @@ name: Check schedule
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # кожні 10 хвилин (GitHub може трохи запізнюватись)
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:          # дозволяє запустити вручну кнопкою
 
 permissions:
