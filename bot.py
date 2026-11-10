@@ -170,12 +170,26 @@ def build_message(d_iso: str, intervals, old=None) -> str:
 def send_telegram(text: str):
     if not TG_TOKEN or not TG_CHAT_ID:
         raise RuntimeError("Задайте TG_TOKEN і TG_CHAT_ID")
-    r = requests.post(
-        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        data={"chat_id": TG_CHAT_ID, "text": text},
-        timeout=15,
-    )
-    r.raise_for_status()
+    # можна вказати кілька отримувачів через кому: 123456789,987654321
+    chat_ids = [c for c in re.split(r"[,;\s]+", TG_CHAT_ID) if c]
+    ok = 0
+    for chat_id in chat_ids:
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                data={"chat_id": chat_id, "text": text},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            # не друкуємо текст помилки повністю: в ньому є адреса з токеном
+            print(f"Чат {chat_id}: помилка мережі ({type(e).__name__})", file=sys.stderr)
+            continue
+        if r.ok:
+            ok += 1
+        else:
+            print(f"Чат {chat_id}: Telegram відповів {r.status_code}: {r.text}", file=sys.stderr)
+    if ok == 0:
+        raise RuntimeError("Повідомлення не надіслано жодному отримувачу")
 
 
 # ---------- стан і основний цикл ----------
@@ -192,12 +206,23 @@ def save_state(state: dict):
 
 
 def fetch_html() -> str:
-    r = requests.get(
-        URL,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; uz-schedule-bot/1.0; personal use)"},
-        timeout=30,
-    )
-    r.raise_for_status()
+    last_error = None
+    for attempt in range(1, 4):  # до 3 спроб: сайт іноді відповідає не з першого разу
+        try:
+            r = requests.get(
+                URL,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; uz-schedule-bot/1.0; personal use)"},
+                timeout=(20, 40),
+            )
+            r.raise_for_status()
+            break
+        except requests.RequestException as e:
+            last_error = e
+            print(f"Спроба {attempt}/3 не вдалася: {type(e).__name__}", file=sys.stderr)
+            if attempt < 3:
+                time.sleep(10)
+    else:
+        raise last_error
     r.encoding = r.apparent_encoding if r.encoding in (None, "ISO-8859-1") else r.encoding
     return r.text
 
